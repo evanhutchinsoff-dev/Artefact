@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Archive — Fragments</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Space+Mono&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #010810; touch-action: none; }
+canvas { display: block; position: fixed; top: 0; left: 0; z-index: 0; }
+
+/* ── PANEL ── */
+#panel {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  background: linear-gradient(180deg, rgba(0,10,20,0.96) 0%, rgba(0,4,12,0.99) 100%);
+  border-top: 1px solid rgba(0,255,180,0.2);
+  padding: 30px 28px 48px;
+  transform: translateY(100%);
+  transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: 60vh; overflow-y: auto;
+  box-shadow: 0 -20px 60px rgba(0,255,180,0.04);
+}
+#panel.open { transform: translateY(0); }
+
+#panel-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 9px; letter-spacing: 4px;
+  color: rgba(0,255,180,0.5);
+  text-transform: uppercase; margin-bottom: 18px;
+  display: flex; align-items: center; gap: 12px;
+}
+#panel-label::after {
+  content: ''; flex: 1; height: 1px;
+  background: linear-gradient(90deg, rgba(0,255,180,0.3), transparent);
+}
+#panel-text {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 18px; line-height: 1.85;
+  color: rgba(185,240,222,0.88);
+  font-weight: 300;
+}
+#panel-close {
+  position: absolute; top: 18px; right: 22px;
+  background: none; border: none;
+  color: rgba(0,255,180,0.4);
+  font-family: 'Space Mono', monospace;
+  font-size: 22px; cursor: pointer; line-height: 1;
+  transition: color 0.2s;
+}
+#panel-close:hover { color: rgba(0,255,180,0.9); }
+
+/* ── HUD ── */
+#hud {
+  position: fixed; inset: 0; pointer-events: none; z-index: 10;
+}
+
+#logo {
+  position: absolute; top: 28px; left: 28px;
+}
+#logo-main {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic; font-size: 15px;
+  color: rgba(0,255,180,0.35); letter-spacing: 1px;
+}
+#logo-sub {
+  font-family: 'Space Mono', monospace;
+  font-size: 8px; letter-spacing: 4px;
+  color: rgba(0,255,180,0.18);
+  margin-top: 5px; text-transform: uppercase;
+}
+
+#gyro-btn {
+  position: absolute; top: 24px; right: 24px;
+  pointer-events: all; cursor: pointer;
+  background: rgba(0,255,180,0.05);
+  border: 1px solid rgba(0,255,180,0.18);
+  color: rgba(0,255,180,0.45);
+  font-family: 'Space Mono', monospace;
+  font-size: 8px; letter-spacing: 3px;
+  padding: 10px 16px; text-transform: uppercase;
+  transition: all 0.3s;
+}
+#gyro-btn:hover { background: rgba(0,255,180,0.1); color: rgba(0,255,180,0.8); border-color: rgba(0,255,180,0.4); }
+#gyro-btn.active { color: rgba(0,255,180,1); border-color: rgba(0,255,180,0.6); background: rgba(0,255,180,0.08); }
+
+#crosshair {
+  position: absolute; top: 50%; left: 50%;
+  width: 16px; height: 16px;
+  transform: translate(-50%, -50%);
+}
+#crosshair::before, #crosshair::after {
+  content: ''; position: absolute; background: rgba(0,255,180,0.25);
+}
+#crosshair::before { width: 1px; height: 100%; left: 50%; transform: translateX(-50%); }
+#crosshair::after  { height: 1px; width: 100%; top: 50%;  transform: translateY(-50%); }
+
+#hint {
+  position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+  font-family: 'Space Mono', monospace; font-size: 8px;
+  color: rgba(0,255,180,0.22); letter-spacing: 3px;
+  text-transform: uppercase; text-align: center;
+  white-space: nowrap; transition: opacity 2s ease;
+}
+
+/* scanner line subtle effect */
+#scan {
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 3px,
+    rgba(0,255,180,0.012) 3px, rgba(0,255,180,0.012) 4px
+  );
+  animation: scanMove 8s linear infinite;
+}
+@keyframes scanMove { 0%{background-position:0 0} 100%{background-position:0 200px} }
+
+/* vignette */
+#vignette {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center,
+    transparent 50%,
+    rgba(0,4,12,0.6) 100%
+  );
+}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div id="scan"></div>
+  <div id="vignette"></div>
+  <div id="logo">
+    <div id="logo-main">Archive</div>
+    <div id="logo-sub">08 fragments · vol. I</div>
+  </div>
+  <button id="gyro-btn">◎ gyroscope</button>
+  <div id="crosshair"></div>
+  <div id="hint">glisser pour explorer · toucher un fragment</div>
+</div>
+
+<div id="panel">
+  <button id="panel-close">×</button>
+  <div id="panel-label" id="panel-title">Fragment —</div>
+  <div id="panel-text"></div>
+</div>
+
+<script>
+// ───────────────────────────────────────── DATA
+const FRAGS = [
+  { label: 'Origine // 001',
+    text: 'Les premières formes de vie dans ce monde n\'avaient pas de corps. Elles étaient des tensions dans l\'espace, des désirs sans forme qui apprenaient lentement à se souvenir d\'elles-mêmes.' },
+  { label: 'Inscription // 002',
+    text: 'On a retrouvé cette inscription dans les grottes sous-marines : « Ce qui observe ne peut être observé. Ce qui nomme ne peut être nommé. » Personne ne sait qui l\'a gravée ni quand.' },
+  { label: 'Mémoire // 003',
+    text: 'La mémoire collective de cet endroit ne réside pas dans les cerveaux des êtres qui y vivent. Elle est stockée dans la résonance des minéraux, dans la fréquence particulière du sol.' },
+  { label: 'Bioluminescence // 004',
+    text: 'Toutes les créatures de la profondeur produisent leur propre lumière. Ce n\'est pas une adaptation — c\'est une langue. Certains chercheurs pensent qu\'elles se racontent des histoires dans le noir.' },
+  { label: 'Frontière // 005',
+    text: 'La frontière entre les deux royaumes n\'est pas géographique. Elle est temporelle. On peut la traverser à condition de savoir exactement quand regarder, et surtout — de ne pas se souvenir de l\'avoir fait.' },
+  { label: 'Effacement // 006',
+    text: 'Il y a des archives qu\'on ne peut lire qu\'une seule fois. Après, elles disparaissent — non pas détruites, mais absorbées par le lecteur. Chaque texte cherche son hôte depuis toujours.' },
+  { label: 'Cartographie // 007',
+    text: 'Les cartes de ce monde sont vivantes. Elles se mettent à jour seules, la nuit. Parfois elles ajoutent des endroits qui n\'existaient pas encore le matin, et effacent ceux que les gens aimaient trop.' },
+  { label: 'Signal // 008',
+    text: 'Le signal a été reçu pour la première fois en année 7 du cycle actuel. Il provenait d\'une direction qui n\'existait pas dans notre cartographie de l\'époque. On l\'a baptisé : l\'Absence.' },
+];
+
+// ───────────────────────────────────────── SETUP
+const W = window.innerWidth, H = window.innerHeight;
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x010810, 0.04);
+
+const camera = new THREE.PerspectiveCamera(70, W / H, 0.05, 80);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x010810, 1);
+document.body.insertBefore(renderer.domElement, document.getElementById('hud'));
+
+// ───────────────────────────────────────── HELPERS
+function makeGlow(r, g, b) {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  const g2 = ctx.createRadialGradient(64,64,0, 64,64,64);
+  g2.addColorStop(0,   `rgba(${r},${g},${b},0.9)`);
+  g2.addColorStop(0.35,`rgba(${r},${g},${b},0.3)`);
+  g2.addColorStop(1,   `rgba(0,0,0,0)`);
+  ctx.fillStyle = g2; ctx.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+
+const PALETTE = [
+  [0,255,180], [0,210,255], [100,255,200], [0,255,140], [80,220,255]
+];
+
+function makeCardTexture(frag, palIdx) {
+  const [r,g,b] = PALETTE[palIdx % PALETTE.length];
+  const cw = 560, ch = 300;
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  const ctx = c.getContext('2d');
+
+  // glass bg
+  ctx.fillStyle = `rgba(0,12,22,0.88)`;
+  roundRect(ctx, 6, 6, cw-12, ch-12, 6); ctx.fill();
+
+  // glow border
+  ctx.shadowBlur = 18; ctx.shadowColor = `rgba(${r},${g},${b},0.5)`;
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.55)`; ctx.lineWidth = 1.2;
+  roundRect(ctx, 6, 6, cw-12, ch-12, 6); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // top accent
+  const accentGrad = ctx.createLinearGradient(22, 0, 120, 0);
+  accentGrad.addColorStop(0, `rgba(${r},${g},${b},0.9)`);
+  accentGrad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = accentGrad;
+  ctx.fillRect(22, 22, 100, 1.5);
+
+  // label
+  ctx.font = '11px "Courier New"';
+  ctx.fillStyle = `rgba(${r},${g},${b},0.7)`;
+  ctx.fillText(frag.label.toUpperCase(), 22, 46);
+
+  // separator
+  ctx.fillStyle = `rgba(${r},${g},${b},0.12)`;
+  ctx.fillRect(22, 56, cw-44, 1);
+
+  // body text
+  ctx.font = '300 16px Georgia, serif';
+  ctx.fillStyle = 'rgba(185,238,220,0.9)';
+  wrapText(ctx, frag.text, 22, 82, cw-44, 24, ch-30);
+
+  return new THREE.CanvasTexture(c);
+}
+
+function roundRect(ctx, x,y,w,h,r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r); ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
+}
+
+function wrapText(ctx, text, x, y, maxW, lh, maxY) {
+  const words = text.split(' ');
+  let line = '';
+  for (const w of words) {
+    const test = line + w + ' ';
+    if (ctx.measureText(test).width > maxW && line !== '') {
+      if (y > maxY) { ctx.fillStyle='rgba(0,255,180,0.3)'; ctx.fillText('…',x,y); return; }
+      ctx.fillText(line.trim(), x, y); y += lh; line = w + ' ';
+    } else line = test;
+  }
+  ctx.fillText(line.trim(), x, y);
+}
+
+// ───────────────────────────────────────── PARTICLES
+(function buildParticles() {
+  const N = 1400;
+  const pos = new Float32Array(N*3);
+  for (let i = 0; i < N; i++) {
+    const rr = 5 + Math.random() * 22;
+    const th = Math.random() * Math.PI*2;
+    const ph = Math.acos(2*Math.random()-1);
+    pos[i*3]   = rr * Math.sin(ph)*Math.cos(th);
+    pos[i*3+1] = rr * Math.sin(ph)*Math.sin(th);
+    pos[i*3+2] = rr * Math.cos(ph);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({
+    color: 0x00ffb4, size: 0.025,
+    transparent: true, opacity: 0.5,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+  });
+  const pts = new THREE.Points(geo, mat);
+  pts.name = 'particles';
+  scene.add(pts);
+
+  // second layer: bigger dim blue ones
+  const pos2 = new Float32Array(300*3);
+  for (let i = 0; i < 300; i++) {
+    const rr = 3 + Math.random() * 18;
+    const th = Math.random()*Math.PI*2, ph = Math.acos(2*Math.random()-1);
+    pos2[i*3]=rr*Math.sin(ph)*Math.cos(th); pos2[i*3+1]=rr*Math.sin(ph)*Math.sin(th); pos2[i*3+2]=rr*Math.cos(ph);
+  }
+  const geo2 = new THREE.BufferGeometry();
+  geo2.setAttribute('position', new THREE.BufferAttribute(pos2, 3));
+  scene.add(new THREE.Points(geo2, new THREE.PointsMaterial({
+    color: 0x0088ff, size: 0.045,
+    transparent: true, opacity: 0.25,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+  })));
+})();
+
+// ───────────────────────────────────────── FRAGMENT CARDS
+const fragData = [];
+const glowTextures = PALETTE.map(([r,g,b]) => makeGlow(r,g,b));
+
+FRAGS.forEach((frag, i) => {
+  const total = FRAGS.length;
+  const angle  = (i / total) * Math.PI * 2 + (Math.random()-0.5)*0.6;
+  const radius = 4.5 + Math.random()*1.8;
+  const yPos   = (Math.random()-0.5)*3.5;
+  const palIdx = i % PALETTE.length;
+  const [r,g,b] = PALETTE[palIdx];
+
+  // Card
+  const tex  = makeCardTexture(frag, palIdx);
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.4, 1.28),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
+  );
+  mesh.position.set(Math.cos(angle)*radius, yPos, Math.sin(angle)*radius);
+  mesh.userData = { frag, palIdx };
+  scene.add(mesh);
+
+  // Glow halo behind card
+  const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTextures[palIdx],
+    blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false, opacity: 0.25,
+  }));
+  glowSprite.scale.set(3.5, 3.5, 1);
+  glowSprite.position.copy(mesh.position);
+  scene.add(glowSprite);
+
+  fragData.push({ mesh, glow: glowSprite, baseY: yPos, offset: Math.random()*Math.PI*2, r, g, b });
+});
+
+// ───────────────────────────────────────── CAMERA CONTROL
+let yaw=0, pitch=0, tYaw=0, tPitch=0;
+let dragging=false, lastX=0, lastY=0, moveDist=0;
+let gyroOn=false, baseAlpha=null;
+
+renderer.domElement.addEventListener('mousedown', e => {
+  dragging=true; lastX=e.clientX; lastY=e.clientY; moveDist=0;
+});
+window.addEventListener('mousemove', e => {
+  if (!dragging || gyroOn) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  moveDist += Math.abs(dx)+Math.abs(dy);
+  tYaw  -= dx*0.003;
+  tPitch = Math.max(-0.65, Math.min(0.65, tPitch - dy*0.002));
+  lastX=e.clientX; lastY=e.clientY;
+});
+window.addEventListener('mouseup', e => {
+  if (moveDist < 6) onTap(e.clientX, e.clientY);
+  dragging=false;
+});
+
+renderer.domElement.addEventListener('touchstart', e => {
+  if (e.touches.length===1){ dragging=true; lastX=e.touches[0].clientX; lastY=e.touches[0].clientY; moveDist=0; }
+}, {passive:true});
+window.addEventListener('touchmove', e => {
+  if (!dragging || e.touches.length!==1) return;
+  const dx=e.touches[0].clientX-lastX, dy=e.touches[0].clientY-lastY;
+  moveDist += Math.abs(dx)+Math.abs(dy);
+  if (!gyroOn) {
+    tYaw  -= dx*0.003;
+    tPitch = Math.max(-0.65, Math.min(0.65, tPitch - dy*0.002));
+  }
+  lastX=e.touches[0].clientX; lastY=e.touches[0].clientY;
+}, {passive:true});
+window.addEventListener('touchend', e => {
+  if (moveDist<8) { const t=e.changedTouches[0]; onTap(t.clientX,t.clientY); }
+  dragging=false;
+});
+
+// GYRO
+document.getElementById('gyro-btn').addEventListener('click', async () => {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { if (await DeviceOrientationEvent.requestPermission() === 'granted') activate(); }
+    catch(e){ console.warn(e); }
+  } else activate();
+});
+function activate() {
+  gyroOn=true; baseAlpha=null;
+  document.getElementById('gyro-btn').classList.add('active');
+  document.getElementById('gyro-btn').textContent='◉ gyroscope';
+  window.addEventListener('deviceorientation', e => {
+    if (e.alpha===null) return;
+    if (baseAlpha===null) baseAlpha=e.alpha;
+    const a = ((e.alpha - baseAlpha + 360) % 360);
+    tYaw  = -(a > 180 ? a-360 : a) * Math.PI/180 * 0.85;
+    tPitch = Math.max(-0.65, Math.min(0.65, -(e.beta-50)*Math.PI/180*0.5));
+  });
+}
+
+// ───────────────────────────────────────── RAYCASTING / TAP
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2();
+const panel      = document.getElementById('panel');
+const panelLabel = document.getElementById('panel-label');
+const panelText  = document.getElementById('panel-text');
+
+function onTap(cx,cy) {
+  ptr.x=(cx/window.innerWidth)*2-1;
+  ptr.y=-(cy/window.innerHeight)*2+1;
+  ray.setFromCamera(ptr, camera);
+  const hits = ray.intersectObjects(fragData.map(f=>f.mesh));
+  if (hits.length) {
+    const { frag } = hits[0].object.userData;
+    panelLabel.textContent = frag.label;
+    panelText.textContent  = frag.text;
+    panel.classList.add('open');
+    document.getElementById('hint').style.opacity = '0';
+  }
+}
+document.getElementById('panel-close').addEventListener('click', () => panel.classList.remove('open'));
+
+// ───────────────────────────────────────── LOOP
+const clock = new THREE.Clock();
+const particles = scene.getObjectByName('particles');
+
+function loop() {
+  requestAnimationFrame(loop);
+  const t = clock.getElapsedTime();
+
+  // smooth camera
+  yaw   += (tYaw   - yaw)   * 0.07;
+  pitch += (tPitch - pitch) * 0.07;
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = yaw;
+  camera.rotation.x = pitch;
+
+  // animate fragments
+  fragData.forEach(({ mesh, glow, baseY, offset, r, g, b }) => {
+    const fy = baseY + Math.sin(t*0.38 + offset)*0.13;
+    mesh.position.y = fy;
+    glow.position.y = fy;
+    glow.material.opacity = 0.18 + Math.sin(t*0.7+offset)*0.1;
+    // face camera on Y axis
+    mesh.lookAt(camera.position.x, fy, camera.position.z);
+  });
+
+  // slow particle drift
+  if (particles) particles.rotation.y = t*0.015;
+
+  renderer.render(scene, camera);
+}
+loop();
+
+// ───────────────────────────────────────── RESIZE
+window.addEventListener('resize', () => {
+  const nW=window.innerWidth, nH=window.innerHeight;
+  camera.aspect=nW/nH; camera.updateProjectionMatrix();
+  renderer.setSize(nW,nH);
+});
+
+// hint fade
+setTimeout(() => { document.getElementById('hint').style.opacity='0'; }, 5000);
+</script>
+</body>
+</html>
