@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Artefact</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #0e0e0e;
+      color: #f0ede6;
+      font-family: 'Georgia', serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    #chicken-wrap {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    #chicken {
+      font-size: 96px;
+      line-height: 1;
+      display: block;
+      transition: transform 0.09s ease;
+    }
+
+    #chicken.peck {
+      transform: translateY(22px) rotate(18deg);
+    }
+
+    #hint {
+      font-size: 12px;
+      color: #555;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    #fragment-zone {
+      margin-top: 3rem;
+      max-width: 520px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .fcard {
+      border: 0.5px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 1.1rem 1.4rem;
+      animation: fadeUp 0.4s ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .fcard p {
+      font-size: 16px;
+      line-height: 1.75;
+      color: #f0ede6;
+    }
+
+    .fcard small {
+      display: block;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #444;
+      letter-spacing: 0.06em;
+      font-family: monospace;
+    }
+
+    #count {
+      margin-top: 2rem;
+      font-size: 11px;
+      color: #333;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    #error {
+      margin-top: 1rem;
+      font-size: 13px;
+      color: #884444;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="chicken-wrap" onclick="peck()">
+    <span id="chicken">🐔</span>
+    <span id="hint">picorer</span>
+  </div>
+
+  <div id="fragment-zone"></div>
+  <div id="count"></div>
+  <div id="error"></div>
+
+  <script>
+    const SUPA_URL = 'https://ycgvgiifnoavdrbpjtij.supabase.co';
+    const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZ3ZnaWlmbm9hdmRyYnBqdGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMjU5MjgsImV4cCI6MjA4NzgwMTkyOH0.OaJfwYRUsTwKDiU6RGXd94YqtNUqdmJOdq5mj31oi94';
+
+    const client = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+    let fragments = [];
+    let shown = [];
+
+    async function loadFragments() {
+      const { data, error } = await client
+        .from('fragments')
+        .select('id, titre, contenu, type, tags');
+      if (error) {
+        document.getElementById('error').textContent = 'Erreur : ' + error.message;
+        return;
+      }
+      fragments = data || [];
+    }
+
+    function peck() {
+      const el = document.getElementById('chicken');
+      el.classList.add('peck');
+      setTimeout(() => el.classList.remove('peck'), 180);
+
+      const unshown = fragments.filter(f => !shown.includes(f.id));
+
+      if (!unshown.length) {
+        shown = [];
+        document.getElementById('fragment-zone').innerHTML = '';
+        document.getElementById('count').textContent = '— tout a été picoré —';
+        document.getElementById('hint').textContent = 'recommencer';
+        return;
+      }
+
+      const pick = unshown[Math.floor(Math.random() * unshown.length)];
+      shown.push(pick.id);
+
+      const zone = document.getElementById('fragment-zone');
+      const card = document.createElement('div');
+      card.className = 'fcard';
+
+      const tags = pick.tags ? pick.tags.map(t => '#' + t).join(' ') : '';
+      card.innerHTML = `
+        <p>${pick.titre ? '<strong>' + pick.titre + '</strong><br>' : ''}${pick.contenu || '—'}</p>
+        ${tags ? '<small>' + tags + '</small>' : ''}
+      `;
+      zone.prepend(card);
+
+      document.getElementById('count').textContent =
+        shown.length + ' / ' + fragments.length;
+      document.getElementById('hint').textContent = 'encore';
+      document.getElementById('error').textContent = '';
+    }
+
+    loadFragments();
+  </script>
+
+</body>
+</html>
