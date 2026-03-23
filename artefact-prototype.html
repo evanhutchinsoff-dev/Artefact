@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Artefact — champ</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #050507;
+      cursor: crosshair;
+    }
+
+    canvas { position: fixed; inset: 0; z-index: 1; display: block; }
+
+    #frags { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+
+    .frag {
+      position: absolute;
+      width: 310px;
+      transform: translate(-50%, -50%);
+      opacity: 0;
+      animation: materialize 3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      pointer-events: none;
+    }
+
+    @keyframes materialize {
+      0%   { opacity: 0; filter: blur(22px) brightness(3.5); }
+      18%  { opacity: 0.55; filter: blur(10px) brightness(1.8); }
+      50%  { opacity: 0.78; filter: blur(3px) brightness(1.1); }
+      100% { opacity: 0.92; filter: blur(0) brightness(1); }
+    }
+
+    .frag-text {
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-weight: 300;
+      font-size: 15px;
+      line-height: 1.95;
+      color: rgba(212, 202, 184, 0.92);
+      letter-spacing: 0.025em;
+    }
+
+    .frag-ref {
+      margin-top: 13px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 8px;
+      color: rgba(80, 98, 128, 0.38);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    .ripple {
+      position: fixed;
+      border-radius: 50%;
+      border: 0.5px solid rgba(175, 192, 222, 0.28);
+      transform: translate(-50%, -50%);
+      animation: ripple-out 1.5s ease-out forwards;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .ripple.void-ripple { border-color: rgba(45, 55, 110, 0.55); }
+
+    @keyframes ripple-out {
+      0%   { width: 0; height: 0; opacity: 0.8; }
+      100% { width: 220px; height: 220px; opacity: 0; }
+    }
+
+    .collapse-point {
+      position: fixed;
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: rgba(215, 205, 188, 1);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 4;
+      animation: collapse-flash 0.7s ease-out forwards;
+    }
+
+    @keyframes collapse-flash {
+      0%   { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+      25%  { transform: translate(-50%, -50%) scale(5); opacity: 0.9; }
+      100% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+    }
+
+    .void-label {
+      position: fixed;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 7.5px;
+      color: rgba(40, 52, 100, 0.38);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      pointer-events: none;
+      z-index: 4;
+      transform: translate(-50%, 0);
+    }
+
+    #hint {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 8px;
+      color: rgba(80, 98, 128, 0.2);
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      z-index: 10;
+      transition: opacity 3s ease;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="field"></canvas>
+  <div id="frags"></div>
+  <div id="hint">observer · toucher le champ</div>
+
+  <script>
+    const canvas = document.getElementById('field');
+    const ctx = canvas.getContext('2d');
+    const fragsEl = document.getElementById('frags');
+    const hintEl = document.getElementById('hint');
+
+    const FRAGMENTS = [
+      { text: "Les relevés de la Station 7 s'interrompent le 14 du mois sans mention. Les coordonnées indiquées ne correspondent à aucune carte connue.", ref: "ARCH.7 — 14 // classe inconnue" },
+      { text: "Elle disait que les ombres arrivaient avant la lumière, dans cet endroit. Personne ne l'a contredite.", ref: "transcription orale // source non vérifiée" },
+      { text: "Troisième migration recensée. Destination : inchangée. La première colonie n'a jamais été retrouvée.", ref: "registre de mouvement // vol. XII" },
+      { text: "Le nom du lieu a été retiré des archives officielles en [date effacée]. Il continue d'apparaître dans les témoignages.", ref: "note de terrain // anonyme" },
+      { text: "Fréquence 14.3 MHz. Signal détecté quatre fois. Jamais à la même heure. Toujours le même contenu.", ref: "log d'interception // non classifié" },
+      { text: "Ce que nous avons trouvé là-bas ne demandait pas à être trouvé. Nous l'avons apporté quand même.", ref: "rapport d'expédition // §7 supprimé" },
+      { text: "L'eau de cette zone ne reflète pas la lumière correctement. Les photographies le confirment. Personne ne sait pourquoi.", ref: "observations de terrain // série C" },
+      { text: "Trois personnes ont décrit le même rêve dans les mêmes termes. Aucune ne se connaissait.", ref: "carnet de collecte // non daté" },
+      { text: "Le bâtiment était déjà en ruine sur les cartes de [année illisible]. Des traces d'occupation récente ont pourtant été relevées.", ref: "rapport de site // classification retirée" },
+      { text: "Aucun son n'a été enregistré à cet endroit. L'équipement fonctionnait.", ref: "journal de bord // nuit du 3" },
+    ];
+
+    const VOID_SPECS = [
+      { rx: 0.20, ry: 0.33, rs: 0.082, phase: 0.0,  label: "zone inaccessible" },
+      { rx: 0.74, ry: 0.26, rs: 0.065, phase: 1.35, label: "accès restreint" },
+      { rx: 0.56, ry: 0.74, rs: 0.075, phase: 2.7,  label: "non cartographié" },
+    ];
+
+    let W, H, voids = [], particles = [], time = 0, fragIdx = 0;
+    let mouse = { x: -9999, y: -9999 };
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      const unit = Math.min(W, H);
+      voids = [];
+    }
+
+    // --- PARTICLES ---
+    class Particle {
+      constructor() { this.spawn(); }
+
+      spawn() {
+        let safe = false;
+        while (!safe) {
+          this.x = Math.random() * W;
+          this.y = Math.random() * H;
+          safe = voids.every(v => Math.hypot(this.x - v.x, this.y - v.y) > v.r * 2);
+        }
+        this.vx = (Math.random() - 0.5) * 0.09;
+        this.vy = (Math.random() - 0.5) * 0.09;
+        this.size = Math.random() * 2.2 + 0.7;
+        this.op = Math.random() * 0.55 + 0.18;
+        this.opDir = Math.random() > 0.5 ? 1 : -1;
+        this.opSpd = 0.002 + Math.random() * 0.003;
+        this.warm = Math.random() > 0.6;
+      }
+
+      update() {
+        this.op += this.opDir * this.opSpd;
+        if (this.op > 0.72 || this.op < 0.1) this.opDir *= -1;
+
+        // Void gravity — particles spiral inward and vanish
+        for (const v of voids) {
+          const dx = v.x - this.x, dy = v.y - this.y;
+          const d = Math.hypot(dx, dy);
+          if (d < v.r * 0.88) { this.spawn(); return; }
+          const inf = v.r * 4.8;
+          if (d < inf) {
+            const f = Math.pow(1 - d / inf, 2.5) * 0.014;
+            this.vx += (dx / d) * f;
+            this.vy += (dy / d) * f;
+          }
+        }
+
+        // Mouse — attraction gravitationnelle
+        const mdx = mouse.x - this.x, mdy = mouse.y - this.y;
+        const md = Math.hypot(mdx, mdy);
+        if (md < 120 && md > 0) {
+          const f = (1 - md / 120) * 0.012;
+          this.vx += (mdx / md) * f;
+          this.vy += (mdy / md) * f;
+        }
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Points de gravité — accélération fibonacci
+        for (const g of gravityPoints) {
+          if (g.stable) {
+            const dx = this.x - g.x, dy = this.y - g.y;
+            const d = Math.hypot(dx, dy);
+
+            // Souffle de naissance — impulsion unique décroissante
+            if (g.birthBlast > 0) {
+              const blastR = g.territory * (2.2 - g.birthBlast);
+              if (d < blastR && d > 0) {
+                const force = g.birthBlast * Math.pow(1 - d / blastR, 1.2) * 2.8;
+                this.vx += (dx / d) * force;
+                this.vy += (dy / d) * force;
+              }
+            }
+
+            // Répulsion permanente — territoire de l'étoile
+            if (d < g.territory && d > 0) {
+              const f = Math.pow(1 - d / g.territory, 2.5) * 0.038;
+              this.vx += (dx / d) * f;
+              this.vy += (dy / d) * f;
+            }
+            continue;
+          }
+          const dx = g.x - this.x, dy = g.y - this.y;
+          const d = Math.hypot(dx, dy);
+
+          // Absorption au contact
+          if (d < 3.5) {
+            const progress = g.mass / g.maxMass;
+            // Accélération exponentielle : chaque absorption rend la suivante plus rapide
+            const gain = 0.04 + Math.pow(progress, 1.618) * 0.96;
+            g.mass = Math.min(g.mass + gain, g.maxMass);
+            if (g.mass >= g.maxMass) {
+              g.stable = true;
+              g.birthBlast = 1.0; // souffle de naissance
+              g.territory = 90 + Math.random() * 30;
+            }
+            this.spawn();
+            return;
+          }
+
+          // Attraction — rayon croît avec la masse (gravité newtonienne + fibonacci)
+          const progress = g.mass / g.maxMass;
+          const inf = 120 + progress * 280;
+          if (d < inf) {
+            const base = Math.pow(1 - d / inf, 2.0);
+            const surge = 0.015 + Math.pow(progress, 1.618) * 0.085;
+            this.vx += (dx / d) * base * surge;
+            this.vy += (dy / d) * base * surge;
+          }
+        }
+        const spd = Math.hypot(this.vx, this.vy);
+        if (spd > 0.45) { this.vx *= 0.45 / spd; this.vy *= 0.45 / spd; }
+        this.vx *= 0.9988; this.vy *= 0.9988;
+
+        if (this.x < 0) this.x = W;
+        if (this.x > W) this.x = 0;
+        if (this.y < 0) this.y = H;
+        if (this.y > H) this.y = 0;
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = this.warm
+          ? `rgba(218, 205, 182, ${this.op})`
+          : `rgba(172, 190, 228, ${this.op})`;
+        ctx.fill();
+      }
+    }
+
+    // --- VOIDS ---
+    function drawVoids() {
+      for (const v of voids) {
+        const pulse = Math.sin(time * 0.35 + v.phase) * 0.5 + 0.5;
+
+        // Outer pull shadow — wide desaturation zone
+        const shadow = ctx.createRadialGradient(v.x, v.y, v.r * 0.8, v.x, v.y, v.r * 5.5);
+        shadow.addColorStop(0,    'rgba(1, 1, 4, 0.82)');
+        shadow.addColorStop(0.18, 'rgba(2, 2, 6, 0.55)');
+        shadow.addColorStop(0.45, 'rgba(3, 3, 8, 0.22)');
+        shadow.addColorStop(1,    'rgba(0, 0, 0, 0)');
+        ctx.beginPath();
+        ctx.arc(v.x, v.y, v.r * 5.5, 0, Math.PI * 2);
+        ctx.fillStyle = shadow;
+        ctx.fill();
+
+        // Core abyss — true darkness, deeper than background
+        const core = ctx.createRadialGradient(v.x, v.y, 0, v.x, v.y, v.r * 1.1);
+        core.addColorStop(0,    'rgba(0, 0, 0, 1)');
+        core.addColorStop(0.55, 'rgba(0, 0, 1, 0.98)');
+        core.addColorStop(0.82, 'rgba(2, 3, 9, 0.92)');
+        core.addColorStop(1,    'rgba(0, 0, 0, 0)');
+        ctx.beginPath();
+        ctx.arc(v.x, v.y, v.r * 1.1, 0, Math.PI * 2);
+        ctx.fillStyle = core;
+        ctx.fill();
+
+        // Phosphorescent rim — cave moss / bioluminescence
+        const rim = ctx.createRadialGradient(v.x, v.y, v.r * 0.68, v.x, v.y, v.r * 1.42);
+        rim.addColorStop(0,    'rgba(0,0,0,0)');
+        rim.addColorStop(0.42, `rgba(12, 20, 58, ${0.05 + pulse * 0.07})`);
+        rim.addColorStop(0.68, `rgba(20, 35, 88, ${0.09 + pulse * 0.11})`);
+        rim.addColorStop(0.84, `rgba(14, 26, 70, ${0.08 + pulse * 0.08})`);
+        rim.addColorStop(1,    'rgba(0,0,0,0)');
+        ctx.beginPath();
+        ctx.arc(v.x, v.y, v.r * 1.42, 0, Math.PI * 2);
+        ctx.fillStyle = rim;
+        ctx.fill();
+
+        // Inner depth — suggests something far below
+        const depth = ctx.createRadialGradient(
+          v.x + v.r * 0.12, v.y - v.r * 0.08, 0,
+          v.x, v.y, v.r * 0.7
+        );
+        depth.addColorStop(0, `rgba(8, 10, 30, ${0.08 + pulse * 0.06})`);
+        depth.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath();
+        ctx.arc(v.x, v.y, v.r * 0.7, 0, Math.PI * 2);
+        ctx.fillStyle = depth;
+        ctx.fill();
+      }
+    }
+
+    // --- LOOP ---
+    function loop() {
+      time += 0.016;
+      // Décrément souffle de naissance
+      for (const g of gravityPoints) {
+        if (g.stable && g.birthBlast > 0) {
+          g.birthBlast = Math.max(0, g.birthBlast - 0.018);
+        }
+      }
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(5, 5, 7, 0.05)';
+      ctx.fillRect(0, 0, W, H);
+      // drawVoids();
+      drawGravityPoints();
+      particles.forEach(p => { p.update(); p.draw(); });
+      requestAnimationFrame(loop);
+    }
+
+    // --- INTERACTION ---
+    let gravityPoints = [];
+
+    function onTap(x, y) {
+      gravityPoints.push({
+        x, y,
+        mass: 0,
+        maxMass: 9,
+        stable: false,
+        bornAt: time,
+      });
+    }
+
+    function drawGravityPoints() {
+      for (const g of gravityPoints) {
+        const r = g.mass * 0.7;
+        if (r < 0.2) continue;
+
+        if (g.stable) {
+          // Anneau de souffle visible — s'élargit et disparaît
+          if (g.birthBlast > 0) {
+            const blastProgress = 1 - g.birthBlast;
+            const blastR = g.territory * (0.3 + blastProgress * 1.9);
+            const blastOp = g.birthBlast * 0.55;
+            const blast = ctx.createRadialGradient(g.x, g.y, blastR * 0.82, g.x, g.y, blastR);
+            blast.addColorStop(0,   `rgba(235, 220, 185, 0)`);
+            blast.addColorStop(0.5, `rgba(235, 220, 185, ${blastOp})`);
+            blast.addColorStop(1,   `rgba(235, 220, 185, 0)`);
+            ctx.beginPath();
+            ctx.arc(g.x, g.y, blastR, 0, Math.PI * 2);
+            ctx.fillStyle = blast;
+            ctx.fill();
+          }
+
+          const pulse = Math.sin(time * 1.1 + g.bornAt) * 0.5 + 0.5;
+          const haloR = r * (3.2 + pulse * 0.9);
+          const halo = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, haloR);
+          halo.addColorStop(0,    `rgba(248, 235, 205, 0.97)`);
+          halo.addColorStop(0.15, `rgba(235, 218, 182, 0.80)`);
+          halo.addColorStop(0.40, `rgba(210, 192, 155, ${0.15 + pulse * 0.08})`);
+          halo.addColorStop(0.72, `rgba(185, 168, 130, ${0.06 + pulse * 0.04})`);
+          halo.addColorStop(1,    'rgba(0,0,0,0)');
+          ctx.beginPath();
+          ctx.arc(g.x, g.y, haloR, 0, Math.PI * 2);
+          ctx.fillStyle = halo;
+          ctx.fill();
+
+        } else {
+          const progress = g.mass / g.maxMass;
+          const flicker = 0.88 + Math.random() * 0.12;
+          const blaze = progress > 0.65
+            ? 1 + Math.pow((progress - 0.65) / 0.35, 2.2) * 3.8
+            : 1;
+          const intensity = Math.min(flicker * blaze, 1);
+          const glowR = r * (1.8 + progress * 4.5);
+
+          const glow = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, glowR);
+          glow.addColorStop(0,    `rgba(255, 248, 225, ${intensity})`);
+          glow.addColorStop(0.18, `rgba(240, 220, 175, ${intensity * 0.75})`);
+          glow.addColorStop(0.50, `rgba(210, 188, 140, ${intensity * 0.25})`);
+          glow.addColorStop(1,    'rgba(0,0,0,0)');
+          ctx.beginPath();
+          ctx.arc(g.x, g.y, glowR, 0, Math.PI * 2);
+          ctx.fillStyle = glow;
+          ctx.fill();
+        }
+      }
+    }
+
+    // Void labels
+    function renderVoidLabels() {
+      document.querySelectorAll('.void-label').forEach(e => e.remove());
+      voids.forEach(v => {
+        const el = document.createElement('div');
+        el.className = 'void-label';
+        el.textContent = v.label;
+        el.style.left = v.x + 'px';
+        el.style.top = (v.y + v.r * 1.55) + 'px';
+        document.body.appendChild(el);
+      });
+    }
+
+    canvas.addEventListener('click', e => onTap(e.clientX, e.clientY));
+    canvas.addEventListener('touchend', e => {
+      e.preventDefault();
+      const t = e.changedTouches[0];
+      onTap(t.clientX, t.clientY);
+    }, { passive: false });
+    window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+    window.addEventListener('resize', () => {
+      resize();
+      particles.forEach(p => p.spawn());
+      // renderVoidLabels();
+    });
+
+    resize();
+    for (let i = 0; i < 270; i++) particles.push(new Particle());
+    renderVoidLabels();
+    loop();
+  </script>
+</body>
+</html>
